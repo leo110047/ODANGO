@@ -65,4 +65,5 @@ jobs:
             **macOS 用戶請注意**：由於應用程式未經 Apple 簽名，首次安裝後需要到「系統偏好設定 > 安全性與隱私」允許執行，或是按住 Control 鍵點擊應用程式選擇「打開」。
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}
