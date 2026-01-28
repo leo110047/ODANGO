@@ -67,11 +67,63 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # 手動上傳 tauri-action 漏掉的 .sig 和 .nsis.zip 檔案
+      - name: Upload missing artifacts (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Looking for .sig files ==="
+          find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null || true
+
+          echo "=== Uploading .sig files ==="
+          for sig_file in $(find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null); do
+            echo "Found: $sig_file"
+            # 取得檔名
+            filename=$(basename "$sig_file")
+            # 根據路徑判斷架構
+            if [[ "$sig_file" == *"aarch64"* ]]; then
+              new_filename="Discord.Pet.Overlay_aarch64.app.tar.gz.sig"
+            else
+              new_filename="Discord.Pet.Overlay_x64.app.tar.gz.sig"
+            fi
+            echo "Uploading as: $new_filename"
+            gh release upload "${{ github.ref_name }}" "$sig_file#$new_filename" --clobber || true
+          done
+
+      - name: Upload missing artifacts (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Looking for .nsis.zip and .sig files ==="
+          find src-tauri/target -name "*.nsis.zip" -type f 2>/dev/null || true
+          find src-tauri/target -name "*.nsis.zip.sig" -type f 2>/dev/null || true
+
+          echo "=== Uploading .nsis.zip files ==="
+          for zip_file in $(find src-tauri/target -name "*.nsis.zip" -type f 2>/dev/null); do
+            echo "Found: $zip_file"
+            filename=$(basename "$zip_file")
+            echo "Uploading: $filename"
+            gh release upload "${{ github.ref_name }}" "$zip_file" --clobber || true
+          done
+
+          echo "=== Uploading .nsis.zip.sig files ==="
+          for sig_file in $(find src-tauri/target -name "*.nsis.zip.sig" -type f 2>/dev/null); do
+            echo "Found: $sig_file"
+            filename=$(basename "$sig_file")
+            echo "Uploading: $filename"
+            gh release upload "${{ github.ref_name }}" "$sig_file" --clobber || true
+          done
+
   publish:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Generate latest.json and publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: actions/github-script@v7
         with:
           script: |
@@ -89,7 +141,7 @@ jobs:
             }
 
             console.log(`Found draft release: ${draftRelease.name}`);
-            console.log(`Release assets:`);
+            console.log(`Release ID: ${draftRelease.id}`);
 
             // Get all assets
             const assets = await github.rest.repos.listReleaseAssets({
@@ -99,60 +151,80 @@ jobs:
               per_page: 100
             });
 
-            // Find signature files
+            console.log(`\nRelease assets (${assets.data.length}):`);
+            for (const asset of assets.data) {
+              console.log(`  - ${asset.name}`);
+            }
+
+            // Find signature files and read their content
             let darwinAarch64Sig = '';
             let darwinX64Sig = '';
             let windowsSig = '';
 
             for (const asset of assets.data) {
-              console.log(`  - ${asset.name}`);
-
               if (asset.name.endsWith('.sig')) {
-                // Download signature content
-                const response = await github.request('GET /repos/{owner}/{repo}/releases/assets/{asset_id}', {
-                  owner,
-                  repo,
-                  asset_id: asset.id,
-                  headers: {
-                    Accept: 'application/octet-stream'
+                console.log(`\nReading signature: ${asset.name}`);
+                try {
+                  const response = await github.request('GET /repos/{owner}/{repo}/releases/assets/{asset_id}', {
+                    owner,
+                    repo,
+                    asset_id: asset.id,
+                    headers: {
+                      Accept: 'application/octet-stream'
+                    }
+                  });
+
+                  const sigContent = Buffer.from(response.data).toString('utf-8').trim();
+                  console.log(`  Content length: ${sigContent.length}`);
+                  console.log(`  Preview: ${sigContent.substring(0, 50)}...`);
+
+                  if (asset.name.includes('aarch64') && asset.name.includes('.app.tar.gz.sig')) {
+                    darwinAarch64Sig = sigContent;
+                    console.log(`  -> Assigned to darwin-aarch64`);
+                  } else if (asset.name.includes('x64') && asset.name.includes('.app.tar.gz.sig')) {
+                    darwinX64Sig = sigContent;
+                    console.log(`  -> Assigned to darwin-x86_64`);
+                  } else if (asset.name.includes('.nsis.zip.sig')) {
+                    windowsSig = sigContent;
+                    console.log(`  -> Assigned to windows-x86_64`);
                   }
-                });
-
-                const sigContent = Buffer.from(response.data).toString('utf-8').trim();
-                console.log(`    Signature length: ${sigContent.length}`);
-
-                if (asset.name.includes('aarch64') && asset.name.includes('.app.tar.gz.sig')) {
-                  darwinAarch64Sig = sigContent;
-                  console.log(`    -> darwin-aarch64`);
-                } else if ((asset.name.includes('x64') || asset.name.includes('x86_64')) && asset.name.includes('.app.tar.gz.sig')) {
-                  darwinX64Sig = sigContent;
-                  console.log(`    -> darwin-x86_64`);
-                } else if (asset.name.includes('.nsis.zip.sig')) {
-                  windowsSig = sigContent;
-                  console.log(`    -> windows-x86_64`);
+                } catch (err) {
+                  console.log(`  Error reading signature: ${err.message}`);
                 }
               }
             }
 
-            // Find updater bundle URLs
-            let darwinAarch64Url = '';
-            let darwinX64Url = '';
-            let windowsUrl = '';
+            // Build URLs using the tag (not the draft release URL which uses untagged)
+            const baseUrl = `https://github.com/${owner}/${repo}/releases/download/${tag}`;
+
+            // Find the actual filenames from assets
+            let darwinAarch64File = '';
+            let darwinX64File = '';
+            let windowsFile = '';
 
             for (const asset of assets.data) {
               if (asset.name.includes('aarch64') && asset.name.endsWith('.app.tar.gz')) {
-                darwinAarch64Url = asset.browser_download_url;
-              } else if ((asset.name.includes('x64') || asset.name.includes('x86_64')) && asset.name.endsWith('.app.tar.gz')) {
-                darwinX64Url = asset.browser_download_url;
-              } else if (asset.name.endsWith('.nsis.zip')) {
-                windowsUrl = asset.browser_download_url;
+                darwinAarch64File = asset.name;
+              } else if (asset.name.includes('x64') && asset.name.endsWith('.app.tar.gz')) {
+                darwinX64File = asset.name;
+              } else if (asset.name.endsWith('.nsis.zip') && !asset.name.endsWith('.sig')) {
+                windowsFile = asset.name;
               }
             }
 
-            console.log(`\nURLs found:`);
+            const darwinAarch64Url = darwinAarch64File ? `${baseUrl}/${encodeURIComponent(darwinAarch64File)}` : '';
+            const darwinX64Url = darwinX64File ? `${baseUrl}/${encodeURIComponent(darwinX64File)}` : '';
+            const windowsUrl = windowsFile ? `${baseUrl}/${encodeURIComponent(windowsFile)}` : '';
+
+            console.log(`\nURLs:`);
             console.log(`  darwin-aarch64: ${darwinAarch64Url}`);
             console.log(`  darwin-x86_64: ${darwinX64Url}`);
             console.log(`  windows-x86_64: ${windowsUrl}`);
+
+            console.log(`\nSignatures:`);
+            console.log(`  darwin-aarch64: ${darwinAarch64Sig ? 'OK (' + darwinAarch64Sig.length + ' chars)' : 'MISSING'}`);
+            console.log(`  darwin-x86_64: ${darwinX64Sig ? 'OK (' + darwinX64Sig.length + ' chars)' : 'MISSING'}`);
+            console.log(`  windows-x86_64: ${windowsSig ? 'OK (' + windowsSig.length + ' chars)' : 'MISSING'}`);
 
             // Create latest.json
             const latestJson = {
@@ -178,12 +250,23 @@ jobs:
             console.log(`\nlatest.json:`);
             console.log(JSON.stringify(latestJson, null, 2));
 
+            // Validate before uploading
+            const hasMissingSig = !darwinAarch64Sig || !darwinX64Sig || !windowsSig;
+            const hasMissingUrl = !darwinAarch64Url || !darwinX64Url || !windowsUrl;
+
+            if (hasMissingSig) {
+              console.log('\n⚠️ WARNING: Some signatures are missing!');
+            }
+            if (hasMissingUrl) {
+              console.log('\n⚠️ WARNING: Some URLs are missing!');
+            }
+
             // Upload latest.json as release asset
             const fs = require('fs');
             const latestJsonPath = '/tmp/latest.json';
             fs.writeFileSync(latestJsonPath, JSON.stringify(latestJson, null, 2));
 
-            // Check if latest.json already exists
+            // Check if latest.json already exists and delete it
             const existingLatestJson = assets.data.find(a => a.name === 'latest.json');
             if (existingLatestJson) {
               await github.rest.repos.deleteReleaseAsset({
@@ -191,7 +274,7 @@ jobs:
                 repo,
                 asset_id: existingLatestJson.id
               });
-              console.log('Deleted existing latest.json');
+              console.log('\nDeleted existing latest.json');
             }
 
             // Upload new latest.json
@@ -205,11 +288,11 @@ jobs:
             });
             console.log('Uploaded latest.json');
 
-            // Publish the release
+            // Publish the release (set draft to false)
             await github.rest.repos.updateRelease({
               owner,
               repo,
               release_id: draftRelease.id,
               draft: false
             });
-            console.log(`Published release ${tag}`);
+            console.log(`\n✅ Published release ${tag}`);
