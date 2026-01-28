@@ -56,15 +56,36 @@ jobs:
         with:
           args: ${{ matrix.args }}
 
+      - name: List build files (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "=== DMG files ==="
+          find src-tauri/target -name "*.dmg" 2>/dev/null || true
+          echo "=== tar.gz files ==="
+          find src-tauri/target -name "*.tar.gz" 2>/dev/null || true
+          echo "=== sig files ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null || true
+
+      - name: List build files (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          echo "=== EXE files ==="
+          find src-tauri/target -name "*.exe" 2>/dev/null || true
+          echo "=== NSIS ZIP files ==="
+          find src-tauri/target -name "*.nsis.zip" 2>/dev/null || true
+          echo "=== SIG files ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null || true
+
       - name: Upload artifacts (macOS)
         if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            src-tauri/target/*/release/bundle/dmg/*.dmg
-            src-tauri/target/*/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/*/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            src-tauri/target/**/release/bundle/macos/*.tar.gz
+            src-tauri/target/**/release/bundle/macos/*.tar.gz.sig
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'windows-latest'
@@ -86,12 +107,13 @@ jobs:
           path: artifacts
 
       - name: Display structure of downloaded files
-        run: find artifacts -type f | head -50
+        run: find artifacts -type f
 
       - name: Prepare release files
         run: |
           mkdir -p release-files
           find artifacts -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.tar.gz" -o -name "*.sig" -o -name "*.nsis.zip" \) -exec cp {} release-files/ \;
+          echo "=== Files in release-files ==="
           ls -la release-files/
 
       - name: Generate latest.json
@@ -100,23 +122,66 @@ jobs:
           VERSION="${VERSION#v}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Get signatures
-          MACOS_AARCH64_SIG=$(cat release-files/Discord*.app.tar.gz.sig 2>/dev/null | grep -v x64 | head -1 || echo "")
-          MACOS_X64_SIG=$(cat release-files/*x64*.app.tar.gz.sig 2>/dev/null | head -1 || echo "")
-          WINDOWS_SIG=$(cat release-files/*.nsis.zip.sig 2>/dev/null | head -1 || echo "")
+          cd release-files
 
-          # Find actual signature files
-          for f in release-files/*.sig; do
-            if [[ "$f" == *"aarch64"* ]] || ([[ "$f" == *".app.tar.gz.sig" ]] && [[ "$f" != *"x64"* ]]); then
-              MACOS_AARCH64_SIG=$(cat "$f")
-            elif [[ "$f" == *"x64"*".app.tar.gz.sig" ]]; then
-              MACOS_X64_SIG=$(cat "$f")
-            elif [[ "$f" == *".nsis.zip.sig" ]]; then
-              WINDOWS_SIG=$(cat "$f")
+          # Find and read signature files
+          MACOS_AARCH64_SIG=""
+          MACOS_X64_SIG=""
+          WINDOWS_SIG=""
+
+          # Look for macOS signatures - the .app.tar.gz.sig files
+          for f in *.tar.gz.sig; do
+            if [ -f "$f" ]; then
+              echo "Found sig file: $f"
+              content=$(cat "$f")
+              echo "Content: $content"
+              # aarch64 files don't have x64 in name
+              if [[ "$f" != *"x64"* ]] && [[ "$f" != *"x86"* ]]; then
+                MACOS_AARCH64_SIG="$content"
+                echo "Set as MACOS_AARCH64_SIG"
+              else
+                MACOS_X64_SIG="$content"
+                echo "Set as MACOS_X64_SIG"
+              fi
             fi
           done
 
-          cat > release-files/latest.json << EOF
+          # Look for Windows signature
+          for f in *.nsis.zip.sig; do
+            if [ -f "$f" ]; then
+              echo "Found Windows sig file: $f"
+              WINDOWS_SIG=$(cat "$f")
+              echo "Set as WINDOWS_SIG"
+            fi
+          done
+
+          echo "=== Signatures ==="
+          echo "MACOS_AARCH64_SIG: $MACOS_AARCH64_SIG"
+          echo "MACOS_X64_SIG: $MACOS_X64_SIG"
+          echo "WINDOWS_SIG: $WINDOWS_SIG"
+
+          # Rename tar.gz files to have version and arch in name
+          for f in *.tar.gz; do
+            if [ -f "$f" ] && [[ "$f" != *"_${VERSION}_"* ]]; then
+              if [[ "$f" != *"x64"* ]] && [[ "$f" != *"x86"* ]]; then
+                mv "$f" "Discord.Pet.Overlay_${VERSION}_aarch64.app.tar.gz"
+              else
+                mv "$f" "Discord.Pet.Overlay_${VERSION}_x64.app.tar.gz"
+              fi
+            fi
+          done
+
+          # Rename nsis.zip file
+          for f in *.nsis.zip; do
+            if [ -f "$f" ] && [[ "$f" != *"_${VERSION}_"* ]]; then
+              mv "$f" "Discord.Pet.Overlay_${VERSION}_x64-setup.nsis.zip"
+            fi
+          done
+
+          echo "=== Files after rename ==="
+          ls -la
+
+          cat > latest.json << EOF
           {
             "version": "${VERSION}",
             "notes": "v${VERSION} 更新",
@@ -137,24 +202,9 @@ jobs:
             }
           }
           EOF
-          cat release-files/latest.json
 
-      - name: Rename files for release
-        run: |
-          cd release-files
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-
-          # Rename files to have consistent naming
-          for f in *.app.tar.gz; do
-            if [[ "$f" == *"aarch64"* ]] || [[ "$f" != *"x64"* ]]; then
-              mv "$f" "Discord.Pet.Overlay_${VERSION}_aarch64.app.tar.gz" 2>/dev/null || true
-            else
-              mv "$f" "Discord.Pet.Overlay_${VERSION}_x64.app.tar.gz" 2>/dev/null || true
-            fi
-          done
-
-          ls -la
+          echo "=== latest.json content ==="
+          cat latest.json
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
