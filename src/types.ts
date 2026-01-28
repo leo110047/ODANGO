@@ -97,7 +97,7 @@ export interface AppConfig {
  * 預設設定
  */
 export const DEFAULT_CONFIG: AppConfig = {
-  serverUrl: '',
+  serverUrl: 'https://api.leo-pet-api.com',
   token: null,
   userId: null,
   tokenExpiresAt: null,

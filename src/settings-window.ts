@@ -7,7 +7,6 @@ import { ask } from '@tauri-apps/plugin-dialog';
 import { createApiClient, ApiError } from './api';
 import {
   loadConfig,
-  saveServerUrl,
   saveToken,
   clearToken,
   savePetWindowY,
@@ -15,17 +14,14 @@ import {
   savePetVisible,
   isTokenValid,
 } from './store';
-import { AppConfig, ConnectionStatus, PetState } from './types';
-
-// 預設伺服器 URL（之後可以改成從環境變數讀取）
-const DEFAULT_SERVER_URL = 'http://localhost:8787';
+import { AppConfig, ConnectionStatus, PetState, DEFAULT_CONFIG } from './types';
 
 // 每次移動的像素數
 const POSITION_STEP = 50;
 
 // 全域狀態
 let config: AppConfig;
-const apiClient = createApiClient(DEFAULT_SERVER_URL);
+const apiClient = createApiClient(DEFAULT_CONFIG.serverUrl);
 
 // DOM 元素
 let elements: {
@@ -92,13 +88,9 @@ async function init(): Promise<void> {
   }
   console.log('Config loaded:', { ...config, token: config.token ? '[REDACTED]' : null });
 
-  // 設定伺服器 URL（使用預設值或已儲存的值）
-  const serverUrl = config.serverUrl || DEFAULT_SERVER_URL;
-  if (!config.serverUrl) {
-    config.serverUrl = serverUrl;
-    await saveServerUrl(serverUrl);
-  }
-  apiClient.setBaseUrl(serverUrl);
+  // 設定伺服器 URL
+  apiClient.setBaseUrl(config.serverUrl);
+  console.log('API client base URL set to:', config.serverUrl);
 
   if (config.token) {
     apiClient.setToken(config.token);
@@ -138,12 +130,6 @@ function updateUIForLoginState(isLoggedIn: boolean): void {
  */
 function setupEventListeners(): void {
   console.log('Setting up event listeners');
-  console.log('Elements:', {
-    discordIdInput: !!elements.discordIdInput,
-    requestCodeBtn: !!elements.requestCodeBtn,
-    pairCodeInput: !!elements.pairCodeInput,
-    linkBtn: !!elements.linkBtn,
-  });
 
   // Discord ID 輸入 - 只允許數字
   elements.discordIdInput?.addEventListener('input', (e) => {
@@ -190,7 +176,7 @@ function setupEventListeners(): void {
             showError('Bot 目前無法使用，請稍後再試');
             break;
           case 'NETWORK_ERROR':
-            showError(`無法連線到伺服器 (${config.serverUrl || DEFAULT_SERVER_URL})，請確認後端服務已啟動`);
+            showError('無法連線到伺服器，請稍後再試');
             break;
           default:
             showError(`錯誤: ${error.code} - ${error.message}`);
