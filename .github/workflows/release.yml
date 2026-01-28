@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Discord Pet Overlay ${{ github.ref_name }}'
+          releaseBody: |
+            ## 更新內容
+
+            ### v1.0.3
+            - 新增應用程式內更新功能
+            - 修正 Windows 上調整寵物垂直位置無效的問題
+
+            ---
+
+            **macOS 用戶請注意**：由於應用程式未經 Apple 簽名，首次安裝後需要到「系統偏好設定 > 安全性與隱私」允許執行，或是按住 Control 鍵點擊應用程式選擇「打開」。
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
