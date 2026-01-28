@@ -9,17 +9,20 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
+            artifact_name: macos-aarch64
           - platform: macos-latest
             args: --target x86_64-apple-darwin
+            artifact_name: macos-x64
           - platform: windows-latest
             args: ''
+            artifact_name: windows-x64
 
     runs-on: ${{ matrix.platform }}
 
@@ -44,26 +47,132 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and Release
+      - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Discord Pet Overlay ${{ github.ref_name }}'
-          releaseBody: |
+          args: ${{ matrix.args }}
+
+      - name: Upload artifacts (macOS)
+        if: matrix.platform == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            src-tauri/target/*/release/bundle/dmg/*.dmg
+            src-tauri/target/*/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/*/release/bundle/macos/*.app.tar.gz.sig
+
+      - name: Upload artifacts (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.nsis.zip
+            src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: find artifacts -type f | head -50
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.tar.gz" -o -name "*.sig" -o -name "*.nsis.zip" \) -exec cp {} release-files/ \;
+          ls -la release-files/
+
+      - name: Generate latest.json
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Get signatures
+          MACOS_AARCH64_SIG=$(cat release-files/Discord*.app.tar.gz.sig 2>/dev/null | grep -v x64 | head -1 || echo "")
+          MACOS_X64_SIG=$(cat release-files/*x64*.app.tar.gz.sig 2>/dev/null | head -1 || echo "")
+          WINDOWS_SIG=$(cat release-files/*.nsis.zip.sig 2>/dev/null | head -1 || echo "")
+
+          # Find actual signature files
+          for f in release-files/*.sig; do
+            if [[ "$f" == *"aarch64"* ]] || ([[ "$f" == *".app.tar.gz.sig" ]] && [[ "$f" != *"x64"* ]]); then
+              MACOS_AARCH64_SIG=$(cat "$f")
+            elif [[ "$f" == *"x64"*".app.tar.gz.sig" ]]; then
+              MACOS_X64_SIG=$(cat "$f")
+            elif [[ "$f" == *".nsis.zip.sig" ]]; then
+              WINDOWS_SIG=$(cat "$f")
+            fi
+          done
+
+          cat > release-files/latest.json << EOF
+          {
+            "version": "${VERSION}",
+            "notes": "v${VERSION} 更新",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${MACOS_AARCH64_SIG}",
+                "url": "https://github.com/leo110047/discord-pet-overlay/releases/download/v${VERSION}/Discord.Pet.Overlay_${VERSION}_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "${MACOS_X64_SIG}",
+                "url": "https://github.com/leo110047/discord-pet-overlay/releases/download/v${VERSION}/Discord.Pet.Overlay_${VERSION}_x64.app.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "${WINDOWS_SIG}",
+                "url": "https://github.com/leo110047/discord-pet-overlay/releases/download/v${VERSION}/Discord.Pet.Overlay_${VERSION}_x64-setup.nsis.zip"
+              }
+            }
+          }
+          EOF
+          cat release-files/latest.json
+
+      - name: Rename files for release
+        run: |
+          cd release-files
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+
+          # Rename files to have consistent naming
+          for f in *.app.tar.gz; do
+            if [[ "$f" == *"aarch64"* ]] || [[ "$f" != *"x64"* ]]; then
+              mv "$f" "Discord.Pet.Overlay_${VERSION}_aarch64.app.tar.gz" 2>/dev/null || true
+            else
+              mv "$f" "Discord.Pet.Overlay_${VERSION}_x64.app.tar.gz" 2>/dev/null || true
+            fi
+          done
+
+          ls -la
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 'Discord Pet Overlay ${{ github.ref_name }}'
+          body: |
             ## 更新內容
 
-            ### v1.0.3
+            ### ${{ github.ref_name }}
             - 新增應用程式內更新功能
             - 修正 Windows 上調整寵物垂直位置無效的問題
 
             ---
 
             **macOS 用戶請注意**：由於應用程式未經 Apple 簽名，首次安裝後需要到「系統偏好設定 > 安全性與隱私」允許執行，或是按住 Control 鍵點擊應用程式選擇「打開」。
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          files: |
+            release-files/*.dmg
+            release-files/*.exe
+            release-files/*.app.tar.gz
+            release-files/*.nsis.zip
+            release-files/latest.json
