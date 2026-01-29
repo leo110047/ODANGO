@@ -13,9 +13,19 @@ html, body {
   color: #fff;
 }
 
+/* 標題列預留空間（macOS 視窗控制按鈕） */
+.titlebar-spacer {
+  height: 28px;
+  background: #1e1f22;
+  -webkit-app-region: drag;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
 #settings-app {
-  padding: 20px;
-  min-height: 100%;
+  padding: 0 20px 20px 20px;
+  min-height: calc(100% - 28px);
 }
 
 /* 連線狀態 */
@@ -320,6 +330,71 @@ input:checked + .toggle-slider:before {
   transform: translateX(20px);
 }
 
+/* 滑桿樣式 */
+.slider-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  gap: 12px;
+}
+
+.slider-row > span {
+  color: #b5bac1;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.slider-value {
+  color: #5865f2;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 36px;
+  text-align: right;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 6px;
+  background: #4f545c;
+  border-radius: 3px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #5865f2;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: #4752c4;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #5865f2;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
 /* 危險按鈕 */
 .danger-btn {
   width: 100%;
@@ -405,13 +480,12 @@ input:checked + .toggle-slider:before {
 
 .pet-item {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px;
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid transparent;
   border-radius: 8px;
-  cursor: pointer;
   transition: all 0.15s;
 }
 
@@ -423,6 +497,13 @@ input:checked + .toggle-slider:before {
 .pet-item.selected {
   background: rgba(88, 101, 242, 0.15);
   border-color: #5865f2;
+}
+
+.pet-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
 }
 
 .pet-item-checkbox {
@@ -494,6 +575,57 @@ input:checked + .toggle-slider:before {
 .pet-item-badge.active {
   background: rgba(35, 134, 54, 0.3);
   color: #3ba55d;
+}
+
+/* 寵物個別設定面板 */
+.pet-item-settings {
+  padding: 8px 0 0 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4px;
+}
+
+.pet-setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.pet-setting-row span {
+  color: #b5bac1;
+  font-size: 13px;
+}
+
+/* 小型 toggle */
+.toggle-switch.small {
+  width: 36px;
+  height: 20px;
+}
+
+.toggle-switch.small .toggle-slider:before {
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+}
+
+.toggle-switch.small input:checked + .toggle-slider:before {
+  transform: translateX(16px);
+}
+
+/* 小型 slider */
+.slider-container.small {
+  gap: 8px;
+}
+
+.slider-container.small input[type="range"] {
+  width: 80px;
+  height: 4px;
+}
+
+.slider-container.small .pet-speed-value {
+  min-width: 32px;
+  font-size: 12px;
 }
 
 .pet-list-empty {

@@ -8,7 +8,8 @@ import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewW
 import { currentMonitor, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
 import { createMultiPetManager, MultiPetManager, setApiBaseUrl } from './anim';
 import { createApiClient, ApiClient, ApiError } from './api';
-import { loadConfig, saveAllPets, saveSelectedPetIds, saveWindowConfig, isTokenValid } from './store';
+import { loadConfig, saveAllPets, saveSelectedPetIds, saveWindowConfig, isTokenValid, getPetSettings } from './store';
+import { PetDisplaySettings } from './types';
 import { AppConfig, PetState } from './types';
 import { initInteractionMode, updateWindowWidth } from './interaction-mode';
 
@@ -89,15 +90,16 @@ async function init(): Promise<void> {
     isConnected
   });
 
-  // 套用移動設定
-  petManager.setMovementEnabled(config.petMovementEnabled);
+  // 套用每隻寵物的個別設定
+  petManager.setPetSettingsGetter((petId) => getPetSettings(config.petSettings, petId));
 
-  // 檢查是否顯示寵物
+  // 檢查是否顯示寵物（基於選擇的寵物列表）
   const hasPets = config.allPets.length > 0;
-  const shouldShowPet = config.petVisible !== false && isConnected && hasPets;
+  const hasSelectedPets = config.selectedPetIds.length > 0 || config.allPets.some(p => p.isActive);
+  const shouldShowPet = isConnected && hasPets && hasSelectedPets;
 
   if (shouldShowPet) {
-    // 已連線且有寵物狀態且設定為顯示
+    // 已連線且有選擇要顯示的寵物
     const petsToShow = getSelectedPets();
     console.log('Showing pets:', petsToShow.length);
     petManager.updatePets(petsToShow);
@@ -106,9 +108,9 @@ async function init(): Promise<void> {
     await mainWindow.show();
   } else {
     // 隱藏寵物和主視窗
-    console.log('Hiding pet - visible:', config.petVisible, 'isConnected:', isConnected, 'hasPets:', hasPets);
+    console.log('Hiding pet - isConnected:', isConnected, 'hasPets:', hasPets, 'hasSelectedPets:', hasSelectedPets);
     petContainer.classList.add('hidden');
-    // 未登入或設定為隱藏時，不顯示主視窗
+    // 未登入時不顯示主視窗
   }
 
   // 初始化互動模式（熱鍵喚醒調整視窗）
@@ -216,11 +218,9 @@ async function setupEventListeners(): Promise<void> {
     if (petsToShow.length > 0) {
       petContainer.classList.remove('hidden');
 
-      // 顯示主視窗（如果設定為顯示）
-      if (config.petVisible !== false) {
-        const mainWindow = getCurrentWebviewWindow();
-        await mainWindow.show();
-      }
+      // 顯示主視窗
+      const mainWindow = getCurrentWebviewWindow();
+      await mainWindow.show();
     }
   });
 
@@ -261,28 +261,12 @@ async function setupEventListeners(): Promise<void> {
     await mainWindow.hide();
   });
 
-  // 監聽顯示/隱藏設定變更
-  await listen<{ visible: boolean }>('visibility-changed', async (event) => {
-    console.log('Visibility changed:', event.payload.visible);
-    config.petVisible = event.payload.visible;
-    const mainWindow = getCurrentWebviewWindow();
-    if (event.payload.visible) {
-      await mainWindow.show();
-      if (isConnected && config.allPets.length > 0) {
-        const petsToShow = getSelectedPets();
-        petManager.updatePets(petsToShow);
-        petContainer.classList.remove('hidden');
-      }
-    } else {
-      await mainWindow.hide();
-    }
-  });
 
-  // 監聽移動設定變更
-  await listen<{ enabled: boolean }>('movement-changed', (event) => {
-    console.log('Movement changed:', event.payload.enabled);
-    config.petMovementEnabled = event.payload.enabled;
-    petManager.setMovementEnabled(event.payload.enabled);
+  // 監聽單隻寵物設定變更
+  await listen<{ petId: string; settings: PetDisplaySettings }>('pet-settings-changed', (event) => {
+    console.log('Pet settings changed:', event.payload);
+    config.petSettings[event.payload.petId] = event.payload.settings;
+    petManager.updatePetSettings(event.payload.petId, event.payload.settings);
   });
 
   // 監聽重置視窗位置
@@ -312,7 +296,6 @@ async function setupEventListeners(): Promise<void> {
       config.windowPosition = { x: 0, y: newY };
       config.petWindowY = newY;
       config.windowWidth = screenWidth;
-      config.petVisible = true;
       await saveWindowConfig(0, newY, screenWidth);
 
       // 更新寵物活動範圍
@@ -376,8 +359,8 @@ async function pollPetState(): Promise<void> {
     const petsToShow = getSelectedPets();
     petManager.updatePets(petsToShow);
 
-    // 確保寵物顯示（如果設定為顯示）
-    if (config.petVisible !== false && petsToShow.length > 0) {
+    // 確保寵物顯示
+    if (petsToShow.length > 0) {
       const petContainer = document.getElementById('pet-container');
       petContainer?.classList.remove('hidden');
     }

@@ -5,7 +5,7 @@
  */
 
 import { load, Store } from '@tauri-apps/plugin-store';
-import { AppConfig, DEFAULT_CONFIG, PetState } from '../types';
+import { AppConfig, DEFAULT_CONFIG, PetState, PetDisplaySettings, DEFAULT_PET_SETTINGS } from '../types';
 
 const STORE_PATH = 'config.json';
 let store: Store | null = null;
@@ -37,8 +37,7 @@ export async function loadConfig(): Promise<AppConfig> {
     const windowPosition = await s.get<{ x: number; y: number }>('windowPosition') ?? DEFAULT_CONFIG.windowPosition;
     const petWindowY = await s.get<number>('petWindowY') ?? DEFAULT_CONFIG.petWindowY;
     const windowWidth = await s.get<number>('windowWidth') ?? DEFAULT_CONFIG.windowWidth;
-    const petMovementEnabled = await s.get<boolean>('petMovementEnabled') ?? DEFAULT_CONFIG.petMovementEnabled;
-    const petVisible = await s.get<boolean>('petVisible') ?? DEFAULT_CONFIG.petVisible;
+    const petSettings = await s.get<Record<string, PetDisplaySettings>>('petSettings') ?? DEFAULT_CONFIG.petSettings;
 
     return {
       serverUrl,
@@ -48,11 +47,10 @@ export async function loadConfig(): Promise<AppConfig> {
       pollIntervalMinutes,
       allPets,
       selectedPetIds,
+      petSettings,
       windowPosition,
       petWindowY,
       windowWidth,
-      petMovementEnabled,
-      petVisible,
     };
   } catch (error) {
     console.error('Failed to load config:', error);
@@ -143,17 +141,17 @@ export async function savePetWindowY(y: number): Promise<void> {
 }
 
 /**
- * 儲存寵物移動設定
+ * 儲存單隻寵物的設定
  */
-export async function savePetMovementEnabled(enabled: boolean): Promise<void> {
-  await saveConfig({ petMovementEnabled: enabled });
+export async function savePetSettings(petSettings: Record<string, PetDisplaySettings>): Promise<void> {
+  await saveConfig({ petSettings });
 }
 
 /**
- * 儲存寵物顯示設定
+ * 取得單隻寵物的設定（如果沒有則返回預設值）
  */
-export async function savePetVisible(visible: boolean): Promise<void> {
-  await saveConfig({ petVisible: visible });
+export function getPetSettings(petSettings: Record<string, PetDisplaySettings>, petId: string): PetDisplaySettings {
+  return petSettings[petId] ?? { ...DEFAULT_PET_SETTINGS };
 }
 
 /**

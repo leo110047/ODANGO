@@ -5,11 +5,16 @@
  * 支援多隻寵物同時顯示
  */
 
-import { PetState } from '../types';
+import { PetState, SpriteFacing } from '../types';
 import { getSpriteUrl as fetchSpriteUrl } from '../store/spriteCache';
 
 /** API 伺服器 URL（由外部設定） */
 let apiBaseUrl: string = '';
+
+/** 移動速度範圍 */
+export const SPEED_MIN = 0.3;
+export const SPEED_MAX = 2.0;
+export const SPEED_DEFAULT = 1.0;
 
 /**
  * 設定 API 伺服器 URL
@@ -38,21 +43,71 @@ export class PetController {
   private containerWidth: number;
   private x: number;
   private direction: 1 | -1 = 1; // 1 = 右, -1 = 左
-  private speed: number = 1;
+  private baseSpeed: number = SPEED_DEFAULT;
   private scale: number = 1;
   private animationFrameId: number | null = null;
   private isPaused: boolean = false;
   private isMovementEnabled: boolean = true;
   private petId: string = '';
   private spritePath: string = '';
+  private stage: string = 'egg';
+  private defaultFacing: SpriteFacing = 'left';
+
+  // 隨機漫步相關
+  private targetX: number = 0;
+  private isResting: boolean = false;
+  private restEndTime: number = 0;
+  private speedMultiplier: number = 1; // 每隻寵物略有不同的速度
 
   constructor(element: HTMLElement, containerWidth: number, initialX?: number) {
     this.element = element;
     this.containerWidth = containerWidth;
     this.x = initialX ?? Math.random() * (containerWidth - 100) + 50;
     this.direction = Math.random() > 0.5 ? 1 : -1;
+    // 每隻寵物有 ±20% 的速度差異
+    this.speedMultiplier = 0.8 + Math.random() * 0.4;
+    // 設定初始目標
+    this.pickNewTarget();
     this.updatePosition();
     this.updateDirection();
+  }
+
+  /**
+   * 選擇新的隨機目標位置
+   */
+  private pickNewTarget(): void {
+    const petWidth = this.element.offsetWidth || 64;
+    const margin = 20;
+    const minX = margin;
+    const maxX = this.containerWidth - petWidth - margin;
+
+    // 隨機選擇目標，但至少要離當前位置 50px
+    let newTarget: number;
+    do {
+      newTarget = minX + Math.random() * (maxX - minX);
+    } while (Math.abs(newTarget - this.x) < 50 && maxX - minX > 100);
+
+    this.targetX = newTarget;
+    this.direction = newTarget > this.x ? 1 : -1;
+    this.updateDirection();
+  }
+
+  /**
+   * 開始休息
+   */
+  private startResting(): void {
+    this.isResting = true;
+    // 休息 2-8 秒
+    const restDuration = 2000 + Math.random() * 6000;
+    this.restEndTime = Date.now() + restDuration;
+    this.element.classList.remove('walking');
+  }
+
+  /**
+   * 檢查是否為蛋（蛋不能移動）
+   */
+  private isEgg(): boolean {
+    return this.stage === 'egg';
   }
 
   /**
@@ -69,8 +124,18 @@ export class PetController {
     this.petId = state.odangoId;
     this.scale = state.scale;
     this.spritePath = state.spritePath;
+    this.stage = state.stage;
+    this.defaultFacing = state.defaultFacing || 'left';
     this.updateSprite();
     this.updateScale();
+    this.updateDirection(); // 更新方向以反映新的 defaultFacing
+  }
+
+  /**
+   * 設定移動速度
+   */
+  setSpeed(speed: number): void {
+    this.baseSpeed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speed));
   }
 
   /**
@@ -113,12 +178,24 @@ export class PetController {
 
   /**
    * 更新方向
+   * 根據 sprite 的預設朝向和當前移動方向決定是否翻轉
+   * - defaultFacing = 'left' 且 direction = 1（向右）→ 翻轉
+   * - defaultFacing = 'left' 且 direction = -1（向左）→ 不翻轉
+   * - defaultFacing = 'right' 且 direction = 1（向右）→ 不翻轉
+   * - defaultFacing = 'right' 且 direction = -1（向左）→ 翻轉
    */
   private updateDirection(): void {
-    if (this.direction === -1) {
-      this.element.classList.add('facing-left');
-    } else {
+    // 判斷是否需要翻轉：移動方向與預設朝向相反時需要翻轉
+    const needsFlip =
+      (this.defaultFacing === 'left' && this.direction === 1) ||
+      (this.defaultFacing === 'right' && this.direction === -1);
+
+    if (needsFlip) {
+      this.element.classList.add('facing-right');
       this.element.classList.remove('facing-left');
+    } else {
+      this.element.classList.add('facing-left');
+      this.element.classList.remove('facing-right');
     }
   }
 
@@ -185,23 +262,49 @@ export class PetController {
    * 動畫主循環
    */
   private animate = (): void => {
+    // 蛋不移動，只播放動畫
+    if (this.isEgg()) {
+      this.animationFrameId = requestAnimationFrame(this.animate);
+      return;
+    }
+
     if (!this.isPaused && this.isMovementEnabled) {
-      // 移動
-      this.x += this.speed * this.direction;
+      const now = Date.now();
 
-      // 邊界檢測與反彈
-      const petWidth = this.element.offsetWidth;
-      if (this.x <= 10) {
-        this.x = 10;
-        this.direction = 1;
-        this.updateDirection();
-      } else if (this.x >= this.containerWidth - petWidth - 10) {
-        this.x = this.containerWidth - petWidth - 10;
-        this.direction = -1;
-        this.updateDirection();
+      // 如果在休息中，檢查是否休息結束
+      if (this.isResting) {
+        if (now >= this.restEndTime) {
+          this.isResting = false;
+          this.pickNewTarget();
+          this.element.classList.add('walking');
+        }
+      } else {
+        // 移動中
+        const effectiveSpeed = this.baseSpeed * this.speedMultiplier;
+        this.x += effectiveSpeed * this.direction;
+
+        // 邊界檢測
+        const petWidth = this.element.offsetWidth || 64;
+        const margin = 10;
+        if (this.x <= margin) {
+          this.x = margin;
+          this.startResting();
+          this.pickNewTarget();
+        } else if (this.x >= this.containerWidth - petWidth - margin) {
+          this.x = this.containerWidth - petWidth - margin;
+          this.startResting();
+          this.pickNewTarget();
+        }
+
+        // 檢查是否到達目標
+        const distanceToTarget = Math.abs(this.x - this.targetX);
+        if (distanceToTarget < effectiveSpeed * 2) {
+          // 到達目標，開始休息
+          this.startResting();
+        }
+
+        this.updatePosition();
       }
-
-      this.updatePosition();
     }
 
     this.animationFrameId = requestAnimationFrame(this.animate);
@@ -238,6 +341,12 @@ export class PetController {
   }
 }
 
+/** 寵物顯示設定（從外部傳入） */
+export interface PetDisplaySettings {
+  movementEnabled: boolean;
+  movementSpeed: number;
+}
+
 /**
  * 多寵物管理器
  */
@@ -245,12 +354,30 @@ export class MultiPetManager {
   private container: HTMLElement;
   private containerWidth: number;
   private controllers: Map<string, PetController> = new Map();
-  private isMovementEnabled: boolean = true;
   private onPetClick: ((petId: string) => void) | null = null;
+  private petSettingsGetter: ((petId: string) => PetDisplaySettings) | null = null;
 
   constructor(container: HTMLElement, containerWidth: number) {
     this.container = container;
     this.containerWidth = containerWidth;
+  }
+
+  /**
+   * 設定寵物設定取得器
+   */
+  setPetSettingsGetter(getter: (petId: string) => PetDisplaySettings): void {
+    this.petSettingsGetter = getter;
+  }
+
+  /**
+   * 更新單隻寵物的設定
+   */
+  updatePetSettings(petId: string, settings: PetDisplaySettings): void {
+    const controller = this.controllers.get(petId);
+    if (controller) {
+      controller.setMovementEnabled(settings.movementEnabled);
+      controller.setSpeed(settings.movementSpeed);
+    }
   }
 
   /**
@@ -280,7 +407,7 @@ export class MultiPetManager {
         // 更新現有寵物
         this.controllers.get(pet.odangoId)!.updateState(pet);
       } else {
-        // 新增寵物
+        // 新增寵物（隨機位置）
         this.addPet(pet);
       }
     }
@@ -296,10 +423,17 @@ export class MultiPetManager {
     element.dataset.petId = pet.odangoId;
     this.container.appendChild(element);
 
-    // 建立控制器
+    // 建立控制器（位置會在建構子中隨機產生）
     const controller = new PetController(element, this.containerWidth);
     controller.updateState(pet);
-    controller.setMovementEnabled(this.isMovementEnabled);
+
+    // 套用個別設定
+    if (this.petSettingsGetter) {
+      const settings = this.petSettingsGetter(pet.odangoId);
+      controller.setMovementEnabled(settings.movementEnabled);
+      controller.setSpeed(settings.movementSpeed);
+    }
+
     controller.start();
 
     // 綁定點擊事件
@@ -331,16 +465,6 @@ export class MultiPetManager {
     this.containerWidth = width;
     for (const controller of this.controllers.values()) {
       controller.setContainerWidth(width);
-    }
-  }
-
-  /**
-   * 設定是否啟用移動
-   */
-  setMovementEnabled(enabled: boolean): void {
-    this.isMovementEnabled = enabled;
-    for (const controller of this.controllers.values()) {
-      controller.setMovementEnabled(enabled);
     }
   }
 

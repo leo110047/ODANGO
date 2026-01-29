@@ -54,16 +54,30 @@ html, body {
   animation: walk 0.4s steps(2) infinite;
 }
 
-.pet.facing-left {
+/* sprite 預設朝左，向右走時翻轉 */
+.pet.facing-right {
   transform: scaleX(-1);
 }
 
-.pet.facing-left:hover {
+.pet.facing-right:hover {
   transform: scaleX(-1) scale(1.1);
 }
 
+.pet.facing-right.walking {
+  animation: walk-right 0.4s steps(2) infinite;
+}
+
+/* 向左走，使用原始方向 */
+.pet.facing-left {
+  transform: scaleX(1);
+}
+
+.pet.facing-left:hover {
+  transform: scale(1.1);
+}
+
 .pet.facing-left.walking {
-  animation: walk-left 0.4s steps(2) infinite;
+  animation: walk 0.4s steps(2) infinite;
 }
 
 @keyframes walk {
@@ -71,7 +85,7 @@ html, body {
   50% { transform: translateY(-3px); }
 }
 
-@keyframes walk-left {
+@keyframes walk-right {
   0%, 100% { transform: scaleX(-1) translateY(0); }
   50% { transform: scaleX(-1) translateY(-3px); }
 }

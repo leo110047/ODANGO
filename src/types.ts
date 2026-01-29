@@ -13,6 +13,11 @@ export type PetSpecies = 'egg' | 'slime' | 'fox' | 'dragon' | 'charmander' | 'ag
 export type PetStage = 'egg' | 'stage1' | 'stage2' | 'stage3';
 
 /**
+ * Sprite 預設朝向
+ */
+export type SpriteFacing = 'left' | 'right';
+
+/**
  * 寵物狀態
  */
 export interface PetState {
@@ -28,8 +33,12 @@ export interface PetState {
   scale: number;
   /** 進化階段 */
   stage: PetStage;
+  /** 當前階段的顯示名稱（如「噴火龍」） */
+  stageName: string;
   /** Sprite 圖片路徑，如 'slime/stage1.gif' */
   spritePath: string;
+  /** Sprite 預設朝向（用於動畫翻轉） */
+  defaultFacing?: SpriteFacing;
   /** 是否等待孵化選擇 */
   pendingHatch: boolean;
   /** 孵化選項（僅 pendingHatch=true 時有值） */
@@ -90,6 +99,16 @@ export interface LinkRequestErrorResponse extends ApiErrorResponse {
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 
 /**
+ * 單隻寵物的顯示設定
+ */
+export interface PetDisplaySettings {
+  /** 是否啟用移動 */
+  movementEnabled: boolean;
+  /** 移動速度（0.3 ~ 2.0） */
+  movementSpeed: number;
+}
+
+/**
  * 應用設定
  */
 export interface AppConfig {
@@ -102,16 +121,22 @@ export interface AppConfig {
   allPets: PetState[];
   /** 選擇要顯示的寵物 ID 列表 */
   selectedPetIds: string[];
+  /** 每隻寵物的個別顯示設定 */
+  petSettings: Record<string, PetDisplaySettings>;
   windowPosition: { x: number; y: number } | null;
   /** 寵物視窗 Y 座標（null 表示使用預設底部位置） */
   petWindowY: number | null;
   /** 寵物視窗寬度（null 表示使用螢幕寬度） */
   windowWidth: number | null;
-  /** 寵物是否啟用移動（預設 true） */
-  petMovementEnabled: boolean;
-  /** 寵物是否顯示（預設 true） */
-  petVisible: boolean;
 }
+
+/**
+ * 預設寵物顯示設定
+ */
+export const DEFAULT_PET_SETTINGS: PetDisplaySettings = {
+  movementEnabled: true,
+  movementSpeed: 1.0,
+};
 
 /**
  * 預設設定
@@ -124,9 +149,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   pollIntervalMinutes: 60,
   allPets: [],
   selectedPetIds: [],
+  petSettings: {},
   windowPosition: null,
   petWindowY: null,
   windowWidth: null,
-  petMovementEnabled: true,
-  petVisible: true,
 };

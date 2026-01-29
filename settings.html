@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="/src/settings.css" />
   </head>
   <body>
+    <!-- 標題列區域（macOS 視窗按鈕預留空間） -->
+    <div class="titlebar-spacer" data-tauri-drag-region></div>
+
     <div id="settings-app">
       <!-- 連線狀態 -->
       <div class="status-section">
@@ -51,30 +54,12 @@
 
       <!-- 外觀設定區塊 -->
       <div class="settings-section">
-        <div class="section-title">外觀設定</div>
+        <div class="section-title">視窗設定</div>
 
         <div class="form-group">
           <label>視窗位置調整</label>
           <p class="section-desc">按住 <kbd>Ctrl+O</kbd> 0.5 秒進入互動模式，可拖曳視窗位置和調整寬度</p>
           <button id="reset-position-btn" class="secondary-btn" type="button">重置視窗位置</button>
-        </div>
-
-        <div class="form-group">
-          <label>寵物行為</label>
-          <div class="toggle-row">
-            <span>顯示寵物</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="visibility-toggle" checked />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="toggle-row">
-            <span>讓寵物走動</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="movement-toggle" checked />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
         </div>
       </div>
 

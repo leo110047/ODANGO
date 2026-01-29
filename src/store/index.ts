@@ -14,8 +14,8 @@ export {
   saveWindowPosition,
   savePetWindowY,
   saveWindowConfig,
-  savePetMovementEnabled,
-  savePetVisible,
+  savePetSettings,
+  getPetSettings,
   isTokenValid,
 } from './config';
 
