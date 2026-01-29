@@ -40,6 +40,13 @@ fi
 
 cd "$PROJECT_DIR"
 
+# 暫時啟用 createUpdaterArtifacts（CI 預設關閉以避免簽名錯誤）
+echo "啟用 createUpdaterArtifacts..."
+sed -i '' 's/"createUpdaterArtifacts": false/"createUpdaterArtifacts": true/' src-tauri/tauri.conf.json
+
+# 建置完成後還原設定的 trap
+trap 'sed -i "" "s/\"createUpdaterArtifacts\": true/\"createUpdaterArtifacts\": false/" src-tauri/tauri.conf.json; echo "已還原 createUpdaterArtifacts 設定"' EXIT
+
 # 取得版本號（去掉 v）
 VERSION_NUM=${VERSION#v}
 
