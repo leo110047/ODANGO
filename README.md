@@ -77,9 +77,9 @@
 | 寵物不顯示 | 點擊「重置視窗位置」或進入互動模式調整 |
 | macOS 顯示損壞 | 執行 `xattr -cr /Applications/ODANGO.app` |
 
-## 開發文件
+## 開發
 
-詳細的開發指南、專案結構、API 文件請參考 [Wiki](https://github.com/mapleleafjack/odango/wiki)。
+詳細的開發指南請參考 [docs/Development.md](docs/Development.md)。
 
 ## 授權
 
