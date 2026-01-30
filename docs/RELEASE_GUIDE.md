@@ -7,6 +7,16 @@
 1. **GitHub Actions**：建置安裝檔（DMG、MSI、EXE）
 2. **本機**：簽名更新包並上傳
 
+## 重要提醒
+
+> ⚠️ **macOS 和 Windows 必須使用同一組金鑰！**
+>
+> 私鑰和公鑰必須在所有平台上保持一致，否則自動更新功能會失效。
+> 如果在任一平台重新生成金鑰，必須：
+> 1. 將新金鑰同步到所有平台
+> 2. 更新 `tauri.conf.json` 中的 pubkey
+> 3. 重新簽名所有平台的更新包
+
 ## 發布步驟
 
 ### 1. 更新版本號
@@ -52,9 +62,9 @@ GitHub Actions 會自動建置安裝檔並建立 Draft Release。
 gh run list --workflow=release.yml --limit=1
 ```
 
-### 5. 執行本機簽名腳本
+### 5. macOS 本機簽名
 
-CI 完成後，執行簽名腳本：
+CI 完成後，在 macOS 執行簽名腳本：
 
 ```bash
 ./scripts/sign-and-upload.sh vx.x.x
@@ -64,11 +74,37 @@ CI 完成後，執行簽名腳本：
 1. 從 Release 下載 `.tar.gz` 更新包
 2. 使用本機私鑰簽名
 3. 上傳 `.sig` 簽名檔
-4. 更新 `latest.json`
+4. 更新 `latest.json`（僅含 macOS）
 
-### 6. 發布 Release
+### 6. Windows 本機建置與簽名
 
-腳本完成後，發布 Release：
+在 Windows 上執行：
+
+```powershell
+# 1. 確認私鑰檔案存在（內容必須與 macOS 相同）
+# 位置: %USERPROFILE%\.tauri\odango.key
+
+# 2. 暫時修改 tauri.conf.json
+# 將 createUpdaterArtifacts 從 false 改為 true
+
+# 3. 設定環境變數並建置
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\odango.key" -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "tauri2025"
+npm run tauri build
+
+# 4. 上傳更新包和簽名檔
+gh release upload vx.x.x "src-tauri\target\release\bundle\nsis\ODANGO_x.x.x_x64-setup.nsis.zip"
+gh release upload vx.x.x "src-tauri\target\release\bundle\nsis\ODANGO_x.x.x_x64-setup.nsis.zip.sig"
+
+# 5. 更新 latest.json（加入 windows-x86_64 平台）
+# 下載現有的 latest.json，加入 Windows 資訊後重新上傳
+
+# 6. 將 createUpdaterArtifacts 改回 false（不要 commit）
+```
+
+### 7. 發布 Release
+
+所有平台簽名完成後，發布 Release：
 
 ```bash
 gh release edit vx.x.x --draft=false
@@ -80,9 +116,23 @@ gh release edit vx.x.x --draft=false
 
 ### 簽名金鑰
 
-- **私鑰位置**：`~/.tauri/odango.key`
+**所有平台使用同一組金鑰：**
+
+- **私鑰位置**：
+  - macOS/Linux: `~/.tauri/odango.key`
+  - Windows: `%USERPROFILE%\.tauri\odango.key`
 - **密碼**：`tauri2025`
 - **公鑰**：已內嵌於 `src-tauri/tauri.conf.json`
+
+**私鑰內容（base64 編碼，一行）：**
+```
+dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5b2JULzRtaVV6Q0VaVHJuaUxPYmJJUHdNK09wUUN1VzU4Yy81UWhpZHZoc0FBQkFBQUFBQUFBQUFBQUlBQUFBQUMxS3dyUnJiTzRsa2dHalZuRjNPc09GOStobEgrMDBCZEJPOFhwQzR5MTc0d21tRzM1OExmTEhyR3ZyaDAyKytULzZCZE5SVzNMVldIS0wvbmRjcEZRYndTQURuRlF4cWdzVFZWRWE3NlFjaE1DcGplWWZ0SEJyTmZ1VTlCaDNDb3dqdmZNVDdraGM9Cg==
+```
+
+**公鑰內容：**
+```
+dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE5MkZGNzJGQzcxMDc2MDUKUldRRmRoREhML2N2R2E3enI2cWc0aDBoOUpjajJ1SkVhdXNNYW9aQmQ2cTRZNThFOUFmazduZjQK
+```
 
 > ⚠️ 私鑰請妥善保管，遺失將無法發布更新！
 
@@ -90,15 +140,17 @@ gh release edit vx.x.x --draft=false
 
 ```
 vx.x.x Release
-├── Discord.Pet.Overlay_x.x.x_aarch64.dmg      # macOS ARM 安裝檔
-├── Discord.Pet.Overlay_x.x.x_x64.dmg          # macOS Intel 安裝檔
-├── Discord.Pet.Overlay_x.x.x_x64-setup.exe    # Windows 安裝檔
-├── Discord.Pet.Overlay_x.x.x_x64_en-US.msi    # Windows MSI 安裝檔
-├── Discord.Pet.Overlay_aarch64.app.tar.gz     # macOS ARM 更新包
-├── Discord.Pet.Overlay_aarch64.app.tar.gz.sig # macOS ARM 簽名
-├── Discord.Pet.Overlay_x64.app.tar.gz         # macOS Intel 更新包
-├── Discord.Pet.Overlay_x64.app.tar.gz.sig     # macOS Intel 簽名
-└── latest.json                                 # 更新資訊
+├── ODANGO_x.x.x_aarch64.dmg              # macOS ARM 安裝檔
+├── ODANGO_x.x.x_x64.dmg                  # macOS Intel 安裝檔
+├── ODANGO_x.x.x_x64-setup.exe            # Windows 安裝檔
+├── ODANGO_x.x.x_x64_en-US.msi            # Windows MSI 安裝檔
+├── ODANGO_aarch64.app.tar.gz             # macOS ARM 更新包
+├── ODANGO_aarch64.app.tar.gz.sig         # macOS ARM 簽名
+├── ODANGO_x64.app.tar.gz                 # macOS Intel 更新包
+├── ODANGO_x64.app.tar.gz.sig             # macOS Intel 簽名
+├── ODANGO_x.x.x_x64-setup.nsis.zip       # Windows 更新包
+├── ODANGO_x.x.x_x64-setup.nsis.zip.sig   # Windows 簽名
+└── latest.json                            # 更新資訊
 ```
 
 ## 故障排除
@@ -116,21 +168,42 @@ vx.x.x Release
 
 ### 簽名失敗
 
-1. 確認私鑰存在：
+1. 確認私鑰存在且內容正確：
    ```bash
-   ls ~/.tauri/discord-pet-overlay.key
+   # macOS
+   cat ~/.tauri/odango.key
+
+   # Windows (PowerShell)
+   Get-Content "$env:USERPROFILE\.tauri\odango.key"
    ```
 
 2. 測試簽名：
    ```bash
-   npx tauri signer sign --private-key-path ~/.tauri/discord-pet-overlay.key --password "tauri2025" test-file
+   echo "test" > test.txt
+   npx tauri signer sign --private-key-path ~/.tauri/odango.key --password "tauri2025" test.txt
    ```
+
+3. 常見問題：
+   - 私鑰檔案不能有多餘的換行符（應該是一行 base64）
+   - 確認密碼正確：`tauri2025`
+   - **macOS 和 Windows 的私鑰內容必須完全相同**
 
 ### 更新功能不工作
 
 1. 確認 `latest.json` 內容正確
 2. 確認簽名與公鑰匹配
 3. 確認 App 內嵌的公鑰與簽名用的私鑰是同一對
+4. **確認所有平台使用同一組金鑰**
+
+### 金鑰不匹配
+
+如果 macOS 和 Windows 使用了不同的金鑰：
+
+1. 選擇一組金鑰作為標準（建議使用已經在 `tauri.conf.json` 中的公鑰對應的私鑰）
+2. 將私鑰同步到所有平台的 `~/.tauri/odango.key`
+3. 如果公鑰也需要更新，修改 `tauri.conf.json` 中的 `pubkey`
+4. 重新簽名所有平台的更新包
+5. 更新 `latest.json`
 
 ## 重新生成金鑰對
 
@@ -138,14 +211,16 @@ vx.x.x Release
 
 ```bash
 # 生成新金鑰對（必須設定密碼，不能留空）
-npx tauri signer generate -w ~/.tauri/discord-pet-overlay.key -p "your-password"
+npx tauri signer generate -w ~/.tauri/odango.key -p "tauri2025"
+
+# 查看公鑰
+cat ~/.tauri/odango.key.pub
 
 # 更新 tauri.conf.json 中的 pubkey
-cat ~/.tauri/discord-pet-overlay.key.pub
 # 將輸出的公鑰複製到 tauri.conf.json 的 plugins.updater.pubkey
 
-# 更新腳本中的密碼
-# 編輯 scripts/sign-and-upload.sh 中的 PRIVATE_KEY_PASSWORD
+# 同步私鑰到所有平台
+# 將 ~/.tauri/odango.key 的內容複製到 Windows
 ```
 
 > ⚠️ 重新生成金鑰後，舊版本的 App 將無法自動更新到新版本！
