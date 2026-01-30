@@ -16,6 +16,58 @@ export const SPEED_MIN = 0.3;
 export const SPEED_MAX = 2.0;
 export const SPEED_DEFAULT = 1.0;
 
+/** 螢幕大小參考值（用於計算寵物大小縮放） */
+const REFERENCE_SCREEN_WIDTH = 1920;
+const REFERENCE_SCREEN_HEIGHT = 1080;
+
+/** 寵物基礎大小（在參考螢幕尺寸下） */
+const BASE_PET_SIZE = 64;
+
+/** 螢幕縮放因子範圍 */
+const MIN_SCREEN_SCALE_FACTOR = 0.75; // 最小縮放（小螢幕）
+const MAX_SCREEN_SCALE_FACTOR = 1.5;  // 最大縮放（大螢幕）
+
+/** 全域螢幕縮放因子 */
+let globalScreenScaleFactor = 1.0;
+
+/**
+ * 根據螢幕大小計算縮放因子
+ * @param screenWidth 螢幕寬度
+ * @param screenHeight 螢幕高度
+ */
+export function calculateScreenScaleFactor(screenWidth: number, screenHeight: number): number {
+  // 使用螢幕對角線來計算縮放比例
+  const referenceDiagonal = Math.sqrt(
+    REFERENCE_SCREEN_WIDTH ** 2 + REFERENCE_SCREEN_HEIGHT ** 2
+  );
+  const currentDiagonal = Math.sqrt(screenWidth ** 2 + screenHeight ** 2);
+
+  // 計算縮放因子
+  let scaleFactor = currentDiagonal / referenceDiagonal;
+
+  // 限制在合理範圍內
+  scaleFactor = Math.max(MIN_SCREEN_SCALE_FACTOR, Math.min(MAX_SCREEN_SCALE_FACTOR, scaleFactor));
+
+  return scaleFactor;
+}
+
+/**
+ * 設定全域螢幕縮放因子
+ * @param screenWidth 螢幕寬度
+ * @param screenHeight 螢幕高度
+ */
+export function setScreenSize(screenWidth: number, screenHeight: number): void {
+  globalScreenScaleFactor = calculateScreenScaleFactor(screenWidth, screenHeight);
+  console.log(`Screen size set: ${screenWidth}x${screenHeight}, scale factor: ${globalScreenScaleFactor.toFixed(2)}`);
+}
+
+/**
+ * 取得當前的螢幕縮放因子
+ */
+export function getScreenScaleFactor(): number {
+  return globalScreenScaleFactor;
+}
+
 /**
  * 設定 API 伺服器 URL
  */
@@ -161,10 +213,12 @@ export class PetController {
 
   /**
    * 更新大小
+   * 根據寵物的 scale 和螢幕縮放因子計算實際大小
    */
   private updateScale(): void {
-    const baseSize = 64;
-    const size = Math.round(baseSize * this.scale);
+    // 結合寵物本身的 scale 和螢幕縮放因子
+    const effectiveScale = this.scale * globalScreenScaleFactor;
+    const size = Math.round(BASE_PET_SIZE * effectiveScale);
     this.element.style.width = `${size}px`;
     this.element.style.height = `${size}px`;
   }

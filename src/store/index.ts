@@ -25,3 +25,21 @@ export {
   clearBlobUrlCache,
   getSpriteCachePath,
 } from './spriteCache';
+
+export {
+  canRequestPairCode,
+  recordPairCodeRequest,
+  onVerificationSuccess,
+  canLogout,
+  recordLogout,
+  canLogin,
+  recordLogin,
+  canMakeApiRequest,
+  recordApiRequest,
+  getRateLimitStatus,
+  resetAllRateLimits,
+  getPairCodeRequestCount,
+  shouldShowPairCodeWarning,
+} from './rateLimit';
+
+export type { RateLimitResult } from './rateLimit';

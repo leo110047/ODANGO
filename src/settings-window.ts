@@ -18,6 +18,14 @@ import {
   getPetSettings,
   isTokenValid,
   getSpriteUrl,
+  canRequestPairCode,
+  recordPairCodeRequest,
+  onVerificationSuccess,
+  canLogout,
+  recordLogout,
+  canLogin,
+  recordLogin,
+  shouldShowPairCodeWarning,
 } from './store';
 import { AppConfig, ConnectionStatus, PetState, DEFAULT_CONFIG, PetDisplaySettings } from './types';
 
@@ -145,14 +153,37 @@ function setupEventListeners(): void {
       return;
     }
 
+    // 檢查客戶端 rate limit
+    const rateLimitCheck = await canRequestPairCode();
+    if (!rateLimitCheck.allowed) {
+      showError(rateLimitCheck.reason || '請求過於頻繁');
+      return;
+    }
+
     hideError();
     setRequestCodeButtonLoading(true);
 
     try {
       console.log('Calling requestPairCode with:', discordId);
       await apiClient.requestPairCode(discordId);
+      // 記錄這次請求（用於計算未驗證次數）
+      await recordPairCodeRequest();
       console.log('Request successful');
-      showSuccess('配對碼已發送到你的 Discord 私訊！');
+
+      // 檢查是否需要顯示警告
+      const remainingAttempts = await shouldShowPairCodeWarning();
+      if (remainingAttempts !== null) {
+        // 顯示警告訊息
+        await message(
+          `配對碼已發送！\n\n⚠️ 注意：你還有 ${remainingAttempts} 次機會完成驗證。\n如果超過次數仍未驗證，將被禁止請求 24 小時。`,
+          {
+            title: '警告',
+            kind: 'warning',
+          }
+        );
+      } else {
+        showSuccess('配對碼已發送到你的 Discord 私訊！');
+      }
     } catch (error) {
       console.error('Request failed:', error);
       if (error instanceof ApiError) {
@@ -202,11 +233,22 @@ function setupEventListeners(): void {
       return;
     }
 
+    // 檢查客戶端登入 rate limit
+    const loginCheck = await canLogin();
+    if (!loginCheck.allowed) {
+      showError(loginCheck.reason || '登入請求過於頻繁');
+      return;
+    }
+
     hideError();
     setLinkButtonLoading(true);
 
     try {
       await performLink(pairCode);
+      // 驗證成功，重置驗證碼請求計數
+      await onVerificationSuccess();
+      // 記錄登入
+      await recordLogin();
       elements.pairCodeInput!.value = '';
     } catch {
       // 錯誤已處理
@@ -218,12 +260,22 @@ function setupEventListeners(): void {
   // 登出按鈕
   elements.logoutBtn?.addEventListener('click', async () => {
     console.log('Logout button clicked');
+
+    // 檢查客戶端登出 rate limit
+    const logoutCheck = await canLogout();
+    if (!logoutCheck.allowed) {
+      showError(logoutCheck.reason || '登出請求過於頻繁');
+      return;
+    }
+
     const confirmed = await ask('確定要登出嗎？你需要重新配對才能使用。', {
       title: '登出確認',
       kind: 'warning',
     });
     console.log('Logout confirmed:', confirmed);
     if (confirmed) {
+      // 記錄登出
+      await recordLogout();
       await clearToken();
       // 清除寵物快取
       await saveAllPets([]);

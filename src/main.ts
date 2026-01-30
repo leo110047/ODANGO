@@ -6,7 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { currentMonitor, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
-import { createMultiPetManager, MultiPetManager, setApiBaseUrl } from './anim';
+import { createMultiPetManager, MultiPetManager, setApiBaseUrl, setScreenSize } from './anim';
 import { createApiClient, ApiClient, ApiError } from './api';
 import { loadConfig, saveAllPets, saveSelectedPetIds, saveWindowConfig, isTokenValid, getPetSettings } from './store';
 import { PetDisplaySettings } from './types';
@@ -55,8 +55,11 @@ async function init(): Promise<void> {
   if (monitor) {
     const scaleFactor = monitor.scaleFactor;
     screenWidth = Math.round(monitor.size.width / scaleFactor);
-    const logicalScreenHeight = monitor.size.height / scaleFactor;
+    const logicalScreenHeight = Math.round(monitor.size.height / scaleFactor);
     console.log('Screen width:', screenWidth, 'Screen height:', logicalScreenHeight, 'Scale factor:', scaleFactor);
+
+    // 設定螢幕大小以調整寵物視覺大小
+    setScreenSize(screenWidth, logicalScreenHeight);
 
     // 使用儲存的寬度或螢幕寬度
     const windowWidthToUse = config.windowWidth || screenWidth;
