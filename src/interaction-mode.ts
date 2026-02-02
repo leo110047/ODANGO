@@ -27,6 +27,7 @@ let windowHeight: number = 200;
 // 拖曳狀態
 let isDragging = false;
 let isResizing = false;
+let isDraggingPet = false;
 let resizeDirection: 'left' | 'right' | null = null;
 let dragStartX = 0;
 let dragStartY = 0;
@@ -34,8 +35,13 @@ let windowStartX = 0;
 let windowStartY = 0;
 let windowStartWidth = 0;
 
+// 寵物拖曳狀態
+let draggingPetElement: HTMLElement | null = null;
+let petStartX = 0;
+
 // 回調函數
 let onWindowConfigChange: ((x: number, y: number, width: number) => Promise<void>) | null = null;
+let onPetPositionChange: ((petId: string, x: number) => void) | null = null;
 
 /**
  * 初始化互動模式
@@ -43,11 +49,13 @@ let onWindowConfigChange: ((x: number, y: number, width: number) => Promise<void
 export async function initInteractionMode(
   initialWidth: number,
   height: number,
-  configChangeCallback: (x: number, y: number, width: number) => Promise<void>
+  configChangeCallback: (x: number, y: number, width: number) => Promise<void>,
+  petPositionChangeCallback?: (petId: string, x: number) => void
 ): Promise<void> {
   windowWidth = initialWidth;
   windowHeight = height;
   onWindowConfigChange = configChangeCallback;
+  onPetPositionChange = petPositionChangeCallback || null;
 
   // 建立 UI 元素
   createBorderOverlay();
@@ -183,6 +191,8 @@ async function exitInteractionMode(): Promise<void> {
   // 重置拖曳狀態
   isDragging = false;
   isResizing = false;
+  isDraggingPet = false;
+  draggingPetElement = null;
 }
 
 /**
@@ -243,9 +253,8 @@ async function onMouseDown(e: MouseEvent): Promise<void> {
     return;
   }
 
-  // 檢查是否點擊邊框區域（用於拖曳）
-  if (target.id === 'interaction-border' || target === document.body) {
-    // 先取得目前視窗位置，再啟用拖曳（避免異步問題）
+  // 按住 Shift 拖曳任何地方 = 移動視窗
+  if (e.shiftKey) {
     const pos = await getCurrentWindowPosition();
     windowStartX = pos.x;
     windowStartY = pos.y;
@@ -255,6 +264,19 @@ async function onMouseDown(e: MouseEvent): Promise<void> {
     dragStartY = e.screenY;
 
     e.preventDefault();
+    return;
+  }
+
+  // 檢查是否點擊寵物（用於拖曳寵物）
+  const petElement = target.closest('.pet') as HTMLElement;
+  if (petElement) {
+    isDraggingPet = true;
+    draggingPetElement = petElement;
+    dragStartX = e.clientX;
+    petStartX = petElement.offsetLeft;
+    petElement.style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
   }
 }
 
@@ -262,28 +284,28 @@ async function onMouseDown(e: MouseEvent): Promise<void> {
  * 滑鼠移動事件
  */
 async function onMouseMove(e: MouseEvent): Promise<void> {
-  if (isDragging) {
+  if (isDraggingPet && draggingPetElement) {
+    const deltaX = e.clientX - dragStartX;
+    let newX = petStartX + deltaX;
+
+    // 確保寵物在視窗範圍內
+    const petWidth = draggingPetElement.offsetWidth;
+    const margin = 10;
+    newX = Math.max(margin, Math.min(windowWidth - petWidth - margin, newX));
+
+    draggingPetElement.style.left = `${newX}px`;
+  } else if (isDragging) {
     const deltaX = e.screenX - dragStartX;
     const deltaY = e.screenY - dragStartY;
 
     const newX = windowStartX + deltaX;
     const newY = windowStartY + deltaY;
 
-    // 加入邊界檢查，確保視窗不會完全移出螢幕
-    const monitor = await currentMonitor();
-    if (monitor) {
-      const scaleFactor = monitor.scaleFactor;
-      const screenWidth = monitor.size.width / scaleFactor;
-      const screenHeight = monitor.size.height / scaleFactor;
+    // 多螢幕支援：不限制 X 軸，讓視窗可以跨螢幕移動
+    // Y 軸只確保不會移到螢幕上方之外
+    const clampedY = Math.max(0, newY);
 
-      // 確保至少有 100px 在螢幕內
-      const clampedX = Math.max(-windowWidth + 100, Math.min(screenWidth - 100, newX));
-      const clampedY = Math.max(0, Math.min(screenHeight - 50, newY));
-
-      await setWindowPosition(clampedX, clampedY);
-    } else {
-      await setWindowPosition(newX, newY);
-    }
+    await setWindowPosition(newX, clampedY);
   } else if (isResizing && resizeDirection) {
     const deltaX = e.screenX - dragStartX;
 
@@ -313,6 +335,22 @@ async function onMouseMove(e: MouseEvent): Promise<void> {
  * 滑鼠放開事件
  */
 async function onMouseUp(): Promise<void> {
+  // 處理寵物拖曳結束
+  if (isDraggingPet && draggingPetElement) {
+    const petId = draggingPetElement.dataset.petId;
+    const newX = draggingPetElement.offsetLeft;
+
+    draggingPetElement.style.cursor = '';
+    draggingPetElement = null;
+    isDraggingPet = false;
+
+    // 通知位置變更
+    if (petId && onPetPositionChange) {
+      onPetPositionChange(petId, newX);
+    }
+    return;
+  }
+
   if (isDragging || isResizing) {
     isDragging = false;
     isResizing = false;

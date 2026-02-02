@@ -23,6 +23,9 @@ const REFERENCE_SCREEN_HEIGHT = 1080;
 /** 寵物基礎大小（在參考螢幕尺寸下） */
 const BASE_PET_SIZE = 64;
 
+/** 基礎顯示倍率（讓預設大小更適合觀看） */
+const BASE_DISPLAY_MULTIPLIER = 1.5;
+
 /** 螢幕縮放因子範圍 */
 const MIN_SCREEN_SCALE_FACTOR = 0.75; // 最小縮放（小螢幕）
 const MAX_SCREEN_SCALE_FACTOR = 1.5;  // 最大縮放（大螢幕）
@@ -213,11 +216,11 @@ export class PetController {
 
   /**
    * 更新大小
-   * 根據寵物的 scale 和螢幕縮放因子計算實際大小
+   * 根據寵物的 scale、基礎顯示倍率和螢幕縮放因子計算實際大小
    */
   private updateScale(): void {
-    // 結合寵物本身的 scale 和螢幕縮放因子
-    const effectiveScale = this.scale * globalScreenScaleFactor;
+    // 結合寵物本身的 scale、基礎顯示倍率和螢幕縮放因子
+    const effectiveScale = this.scale * BASE_DISPLAY_MULTIPLIER * globalScreenScaleFactor;
     const size = Math.round(BASE_PET_SIZE * effectiveScale);
     this.element.style.width = `${size}px`;
     this.element.style.height = `${size}px`;
@@ -288,9 +291,41 @@ export class PetController {
 
   /**
    * 設定容器寬度
+   * 同時確保寵物位置在視窗內
    */
   setContainerWidth(width: number): void {
     this.containerWidth = width;
+    // 確保寵物位置在新的視窗範圍內
+    this.clampPositionToContainer();
+  }
+
+  /**
+   * 同步位置（當外部拖曳寵物後呼叫）
+   */
+  syncPosition(): void {
+    this.x = this.element.offsetLeft;
+    // 更新目標位置，避免寵物立刻跑回原來的目標
+    if (!this.isEgg() && !this.isResting) {
+      this.pickNewTarget();
+    }
+  }
+
+  /**
+   * 確保寵物位置在容器範圍內
+   */
+  private clampPositionToContainer(): void {
+    const petWidth = this.element.offsetWidth || 64;
+    const margin = 10;
+    const maxX = this.containerWidth - petWidth - margin;
+
+    if (this.x > maxX) {
+      this.x = Math.max(margin, maxX);
+      this.updatePosition();
+      // 如果正在移動，重新選擇目標
+      if (!this.isResting && !this.isEgg()) {
+        this.pickNewTarget();
+      }
+    }
   }
 
   /**
@@ -519,6 +554,16 @@ export class MultiPetManager {
     this.containerWidth = width;
     for (const controller of this.controllers.values()) {
       controller.setContainerWidth(width);
+    }
+  }
+
+  /**
+   * 同步寵物位置（當外部拖曳寵物後呼叫）
+   */
+  syncPetPosition(petId: string): void {
+    const controller = this.controllers.get(petId);
+    if (controller) {
+      controller.syncPosition();
     }
   }
 

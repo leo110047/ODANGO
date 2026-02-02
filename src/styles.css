@@ -132,13 +132,13 @@ html, body {
 
 .interaction-border.visible {
   opacity: 1;
-  pointer-events: auto;
-  cursor: move;
+  /* 邊框本身不接收事件，讓事件穿透到下方 */
+  pointer-events: none;
 }
 
 /* 互動模式提示文字 */
 .interaction-border::after {
-  content: '互動模式：拖曳移動視窗，左右邊緣調整寬度，Ctrl+O 長按退出';
+  content: '拖曳寵物調整位置 | Shift+拖曳移動視窗 | 左右邊緣調整寬度 | Ctrl+O 退出';
   position: absolute;
   top: 8px;
   left: 50%;
@@ -150,6 +150,17 @@ html, body {
   font-size: 12px;
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* 互動模式下寵物可拖曳 */
+.interaction-border.visible ~ #app .pet {
+  cursor: grab;
+  z-index: 1002; /* 高於邊框和 resize handles */
+  pointer-events: auto;
+}
+
+.interaction-border.visible ~ #app .pet:active {
+  cursor: grabbing;
 }
 
 /* Resize handles */

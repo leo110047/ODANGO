@@ -127,6 +127,10 @@ async function init(): Promise<void> {
     // 更新寵物活動範圍
     petManager.setContainerWidth(width);
     updateWindowWidth(width);
+  }, (petId, _x) => {
+    // 寵物拖曳結束時的回調
+    console.log('Pet position changed:', { petId, x: _x });
+    petManager.syncPetPosition(petId);
   });
 
   // 監聯視窗大小變更
