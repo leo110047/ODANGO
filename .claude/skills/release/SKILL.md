@@ -36,13 +36,15 @@ argument-hint: [version]
 - `src-tauri/tauri.conf.json` -> `version`
 - `src-tauri/Cargo.toml` -> `version`
 
-如果要更新版本，使用：
+如果要更新版本，**只使用**：
 ```bash
 node scripts/sync-version.mjs $ARGUMENTS
-cargo generate-lockfile
 ```
 
-### 4. 建置測試
+> ⚠️ **絕對不要執行 `cargo generate-lockfile`！**
+> 這會重新解析所有 Rust 依賴，可能導致 Tauri crate 版本與 NPM 包版本不匹配，造成 CI 建置失敗。
+
+### 4. 建置測試（可選）
 
 在發布前確認本機可以成功建置：
 ```bash
@@ -79,9 +81,24 @@ gh run list --workflow=release.yml --limit=1
 ./scripts/sign-and-upload.sh v$ARGUMENTS
 ```
 
-### Step 5: Windows 建置與簽名
+### Step 5: Windows 簽名
 
-提醒用戶執行 Windows 簽名流程（參考 `docs/RELEASE_GUIDE.md`）
+> ⚠️ **不要使用 Windows 本機建置的 .nsis.zip！**
+> Windows 本機建置產生的 zip 可能使用不被 Tauri updater 支援的壓縮方式（如 LZMA），會導致更新失敗：`unsupported Zip archive: Compression method not supported`
+
+**正確做法：使用 CI 產生的 zip，只重新簽名**
+
+1. 下載 CI 產生的 zip：
+```powershell
+curl -LO "https://github.com/leo110047/ODANGO/releases/download/v$ARGUMENTS/ODANGO_$ARGUMENTS_x64-setup.nsis.zip"
+```
+
+2. 簽名：
+```powershell
+npx tauri signer sign --private-key-path "$env:USERPROFILE\.tauri\odango.key" --password "tauri2025" "ODANGO_$ARGUMENTS_x64-setup.nsis.zip"
+```
+
+3. 把簽名內容（.sig 檔內容）提供給我更新 latest.json
 
 ### Step 6: 發布 Release
 ```bash
@@ -95,3 +112,5 @@ gh release edit v$ARGUMENTS --draft=false
 - **金鑰資訊記錄在 `.keys/SIGNING_KEYS.md`（不會上傳 Git）**
 - **每次發布前都要確認公鑰沒有被意外修改**
 - **macOS 和 Windows 必須使用同一組金鑰**
+- **不要執行 `cargo generate-lockfile`，會導致版本不匹配**
+- **Windows 更新包必須使用 CI 產生的 zip，不要用本機建置的**
