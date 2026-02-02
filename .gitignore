@@ -30,6 +30,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Signing keys (sensitive!)
+.keys/
+
 # Tauri
 src-tauri/WixTools/
 *.dmg
