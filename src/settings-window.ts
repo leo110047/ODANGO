@@ -496,7 +496,7 @@ async function renderPetList(pets: PetState[]): Promise<void> {
             <div class="pet-item-name">${displayName}</div>
             <div class="pet-item-details">${pet.scale.toFixed(2)}x</div>
           </div>
-          ${pet.isActive ? '<span class="pet-item-badge active">使用中</span>' : ''}
+          ${pet.isActive ? '<span class="pet-item-badge active">培養中</span>' : ''}
         </div>
         ${settingsHtml}
       </div>

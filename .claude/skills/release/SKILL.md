@@ -83,22 +83,34 @@ gh run list --workflow=release.yml --limit=1
 
 ### Step 5: Windows 簽名
 
-> ⚠️ **不要使用 Windows 本機建置的 .nsis.zip！**
-> Windows 本機建置產生的 zip 可能使用不被 Tauri updater 支援的壓縮方式（如 LZMA），會導致更新失敗：`unsupported Zip archive: Compression method not supported`
+> ⚠️ **CI 不會產生 .nsis.zip，需要手動建立！**
 
-**正確做法：使用 CI 產生的 zip，只重新簽名**
+> ⚠️ **ZIP 壓縮方式很重要！**
+> - Tauri updater 可能不支援某些壓縮方式（如 Deflate64、LZMA）
+> - 使用 **Stored（無壓縮）** 最安全，所有解壓器都支援
+> - 錯誤訊息：`unsupported Zip archive: Compression method not supported`
 
-1. 下載 CI 產生的 zip：
-```powershell
-curl -LO "https://github.com/leo110047/ODANGO/releases/download/v$ARGUMENTS/ODANGO_$ARGUMENTS_x64-setup.nsis.zip"
-```
+**正確做法：**
 
-2. 簽名：
+1. 從 GitHub Release 下載 CI 產生的 exe：
+   `ODANGO_$ARGUMENTS_x64-setup.exe`
+
+2. 用 **7-Zip** 建立 **Stored（無壓縮）** 的 zip：
+   - 右鍵 → 7-Zip → 加入壓縮檔
+   - 壓縮格式：zip
+   - 壓縮等級：**僅儲存（Stored）**
+   - 檔名：`ODANGO_$ARGUMENTS_x64-setup.nsis.zip`
+
+3. 簽名 zip：
 ```powershell
 npx tauri signer sign --private-key-path "$env:USERPROFILE\.tauri\odango.key" --password "tauri2025" "ODANGO_$ARGUMENTS_x64-setup.nsis.zip"
 ```
 
-3. 把簽名內容（.sig 檔內容）提供給我更新 latest.json
+4. 上傳到 GitHub Release（覆蓋）：
+   - `ODANGO_$ARGUMENTS_x64-setup.nsis.zip`
+   - `ODANGO_$ARGUMENTS_x64-setup.nsis.zip.sig`
+
+5. 把 .sig 檔內容提供給我更新 latest.json
 
 ### Step 6: 發布 Release
 ```bash
@@ -113,4 +125,4 @@ gh release edit v$ARGUMENTS --draft=false
 - **每次發布前都要確認公鑰沒有被意外修改**
 - **macOS 和 Windows 必須使用同一組金鑰**
 - **不要執行 `cargo generate-lockfile`，會導致版本不匹配**
-- **Windows 更新包必須使用 CI 產生的 zip，不要用本機建置的**
+- **Windows zip 必須使用 Stored（無壓縮）方式建立**

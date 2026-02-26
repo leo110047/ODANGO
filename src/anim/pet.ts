@@ -24,7 +24,7 @@ const REFERENCE_SCREEN_HEIGHT = 1080;
 const BASE_PET_SIZE = 64;
 
 /** 基礎顯示倍率（讓預設大小更適合觀看） */
-const BASE_DISPLAY_MULTIPLIER = 1.5;
+const BASE_DISPLAY_MULTIPLIER = 2.0;
 
 /** 螢幕縮放因子範圍 */
 const MIN_SCREEN_SCALE_FACTOR = 0.75; // 最小縮放（小螢幕）
